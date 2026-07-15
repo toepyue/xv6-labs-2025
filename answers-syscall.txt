@@ -1,0 +1,25 @@
+1.Using gdb (easy)
+问题回答：
+1)Which function called syscall?
+答案：usertrap
+原理解析：当用户程序执行 ecall 汇编指令时，CPU 会触发陷阱（Trap）并跳转到内核的汇编入口 uservec。随后，C 语言编写的陷阱总管函数 usertrap() 接管执行，它通过检查寄存器发现这次陷入内核的原因是“用户发起系统调用”（scause == 8），于是调用 syscall() 来分发具体的请求。
+
+2)Value of p->trapframe->a7 and what it represents?
+答案：值为 7，代表 SYS_exec 系统调用号。
+原理解析：在 RISC-V 架构规范中，用户程序是通过 a7 寄存器来传递系统调用编号的。这里出现编号 7，是因为内核开机时启动了第一个微型始祖进程 initcode，这个进程唯一的使命就是调用 exec（编号正是 7），从而把真正完整的用户态环境 /init 进程加载到内存中执行。
+
+3)Previous mode the CPU was in?
+答案：User mode（用户态，即模式 0）
+原理解析：RISC-V 的状态寄存器 sstatus 里的 SPP 字段（第 8 位，bit 8） 负责记录 CPU 陷入内核前的特权级状态。在 GDB 中查看到的 sstatus 第 8 位的值为 0，在硬件层面明确证实了 CPU 发生陷阱前是运行在低特权级的 User mode。
+
+4)Assembly instruction panicing at & corresponding register?
+答案：汇编指令通常是 lw a3, 0(zero)，对应局部变量 num 的寄存器是 a3。（注：取决于编译器的优化，也可能是 a5，可通过 kernel/kernel.asm 搜索确认）。
+原理解析：在 C 语言中执行 num = *(int*)0 意味着从虚拟地址 0x0 读取一个 32 位整型数据，这在 RISC-V 中会被编译器翻译为 lw (Load Word) 指令。指令中负责接收这个读取值的寄存器（如 a3），就是变量 num 在物理 CPU 上的化身。
+
+5) Why crash? Address 0 mapped? Confirmed by scause?
+答案：崩溃原因是解引用了未映射的空指针；地址 0 没有映射 (No)；scause=0xd 证实了这一点 (Yes)。
+原理解析：xv6 操作系统在初始化页表时，故意把虚拟地址 0x0 留空不作映射，目的就是利用硬件页表来捕捉和拦截代码中的空指针解引用（Null Pointer）错误。因此当 CPU 尝试读取这个地址时，硬件会立刻抛出 scause=0xd（十进制 13），这在 RISC-V 特权级规范里正对应 Load page fault（读取页错误）。
+
+6)Process name & PID?
+答案：进程名是 "initcode"，进程 ID (PID) 是 1。
+原理解析：这是 xv6 操作系统内核启动完毕后，利用 userinit() 亲手创建的整个系统里的第一个用户态进程。因为它是所有后续用户进程的“始祖”，所以它的 PID 永远固定编号为 1。
